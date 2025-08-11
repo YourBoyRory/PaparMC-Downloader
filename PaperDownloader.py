@@ -2,12 +2,15 @@ from urllib.request import urlretrieve
 import argparse
 import requests
 import traceback
+import glob
 import re
 import os
 
 class PaparDownloader:
 
     baseURL="https://api.papermc.io/v2/projects/paper/"
+    backup_dir = './backups/server_jars'
+    max_backups = 10
 
     def __init__(self, ver, update):
         if not ver:
@@ -20,12 +23,24 @@ class PaparDownloader:
                 if updateNeeded:
                     if self.downloadFile(url):
                         print(f"[INFO] Updated PaperMC! - {old_build_str} -> {build_str}")
-                        os.remove(f"paper-{old_build_str}-90.jar")
+                        self.manageBackups(old_build_str)
                 elif old_build_str != "":
                     print(f"[INFO] PaperMC Up to date! - {build_str}")
             else:
                 self.downloadFile(url)
 
+    def manageBackups(self, old_build_str):
+        max_backups = self.max_backups
+        backup_dir = self.backup_dir
+        os.rename(f"paper-{old_build_str}.jar", f"./backups/server_jars/paper-{old_build_str}.jar.bak")
+        backup_pattern = os.path.join(backup_dir, 'paper-*.jar.bak')
+        backup_files = glob.glob(backup_pattern)
+        backup_files.sort(key=os.path.getmtime)
+        if len(backup_files) > max_backups:
+            to_delete = backup_files[:-max_backups]
+            for file_path in to_delete:
+                os.remove(file_path)
+                print(f"[INFO] Deleted old backup: {file_path}")
 
     def checkForUpdate(self, build_str):
         old_build_str = ""
@@ -110,7 +125,7 @@ if __name__ == "__main__":
     if args.update:
         update = True
     else:
-        update = False
+        update = True
 
     if args.ver:
         ver = args.ver
