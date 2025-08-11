@@ -1,20 +1,54 @@
 from urllib.request import urlretrieve
+import argparse
 import requests
 import traceback
+import re
 import os
-import sys
 
 class PaparDownloader:
-    
+
     baseURL="https://api.papermc.io/v2/projects/paper/"
 
-    def __init__(self, ver):
+    def __init__(self, ver, update):
         if not ver:
-            url = self.getLatestBuild()
+            url, build_str = self.getLatestBuild()
         else:
-            url = self.getBuild(ver)
+            url, build_str = self.getBuild(ver)
         if url:
-            self.downloadFile(url)
+            if update:
+                updateNeeded, old_build_str = self.checkForUpdate(build_str)
+                if updateNeeded:
+                    if self.downloadFile(url):
+                        print(f"[INFO] Updated PaperMC! - {old_build_str} -> {build_str}")
+                        os.remove(f"paper-{old_build_str}-90.jar")
+                elif old_build_str != "":
+                    print(f"[INFO] PaperMC Up to date! - {build_str}")
+            else:
+                self.downloadFile(url)
+
+
+    def checkForUpdate(self, build_str):
+        old_build_str = ""
+        try:
+            pattern = re.compile(r'^paper-(\d+\.\d+\.\d+-\d+)\.jar$')
+            for filename in os.listdir('.'):
+                match = pattern.match(filename)
+                if match:
+                    old_build_str = match.group(1)
+            if old_build_str == "":
+                print("[WARN] No old version found!")
+                return False, old_build_str
+        except:
+            display_error(self, "[WARN] No old version found!")
+            return False, old_build_str
+
+        def parse_version(v):
+            main, build = v.split('-')
+            parts = list(map(int, main.split('.')))
+            parts.append(int(build))
+            return parts
+
+        return parse_version(old_build_str) < parse_version(build_str), old_build_str
 
     def getLatestBuild(self):
         print("[INFO] Getting latest build.")
@@ -34,14 +68,16 @@ class PaparDownloader:
             response = requests.get(package_URL).json()
             print("[INFO] Connected to API.")
             package_URL += builds_prefix
-            package_URL += str(response["builds"][-1])
+            build_number = str(response["builds"][-1])
+            build_str = f"{ver}-{build_number}"
+            package_URL += build_number
             response = requests.get(package_URL).json()
             package_URL += downloads_prefix
             package_URL += response["downloads"]["application"]["name"]
-            return package_URL
+            return package_URL, build_str
         except:
             self.display_error("[ERROR] API Call Failed, Download Aborted.")
-            return None
+            return None, ""
 
     def downloadFile(self, url):
         filename = os.path.basename(url)
@@ -66,8 +102,18 @@ class PaparDownloader:
 
 
 if __name__ == "__main__":
-    try:
-        ver = sys.argv[1]
-    except:
+    parser = argparse.ArgumentParser(description="Download PaperMC Server")
+    parser.add_argument("--ver", type=str, help="Version to download.")
+    parser.add_argument("--update", action='store_true', help="skip download if already up to date.")
+    args = parser.parse_args()
+
+    if args.update:
+        update = True
+    else:
+        update = False
+
+    if args.ver:
+        ver = args.ver
+    else:
         ver = None
-    PaparDownloader(ver)
+    PaparDownloader(ver, update)
